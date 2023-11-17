@@ -18,6 +18,6 @@ For example, if your rocket runs at 1000 m/s and you accelerate until you reach 
 
 **How to install it?**
 
-- Go to [Releases](https://github.com/Kaskouy/ANAIS/releases), and download "DeltaV_Calculator.dll" (take the latest available version).
+- Go to [Releases](https://github.com/Kaskouy/SFS-DeltaV-calculator/releases), and download "DeltaV_Calculator.dll" (take the latest available version).
 - Launch _Spaceflight simulator_, then from the _mod loader_ menu, click on _Open Mods Folder_
 - Drop DeltaV_Calculator.dll into the opened folder, and restart your game. The mod is now available in the mod loader.
