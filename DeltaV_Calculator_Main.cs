@@ -19,7 +19,7 @@ namespace DeltaV_Calculator
         const string C_STR_MOD_NAME = "ΔV calculator";
         const string C_STR_AUTHOR = "Altaïr";
         const string C_STR_MODLOADER_VERSION = "1.5.10.2";
-        const string C_STR_MOD_VERSION = "V0.9";
+        const string C_STR_MOD_VERSION = "V1.0";
         const string C_STR_MOD_DESCRIPTION = "This mod adds your current ΔV to the flight information interface.";
 
         public override string ModNameID => C_STR_MOD_ID;
@@ -39,9 +39,8 @@ namespace DeltaV_Calculator
         // Set the dependencies
         public override Dictionary<string, string> Dependencies { get; } = new Dictionary<string, string> { { "UITools", "1.0" } };
 
-        public Dictionary<string, FilePath> UpdatableFiles => new Dictionary<string, FilePath>();
-        //public Dictionary<string, FilePath> UpdatableFiles => new Dictionary<string, FilePath> { { "https://github.com/Kaskouy/ANAIS/releases/latest/download/ANAIS.dll", new FolderPath(ModFolder).ExtendToFile("DeltaV_Calculator.dll") } };
-
+        public Dictionary<string, FilePath> UpdatableFiles => new Dictionary<string, FilePath> { { "https://github.com/Kaskouy/SFS-DeltaV-calculator/releases/latest/download/DeltaV_Calculator.dll", new FolderPath(ModFolder).ExtendToFile("DeltaV_Calculator.dll") } };
+        
         public Main() : base()
         {
             //Harmony.DEBUG = false;
