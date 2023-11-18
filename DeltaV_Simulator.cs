@@ -31,11 +31,6 @@ namespace DeltaV_Calculator
             public double burnTime;
             
             // Constructor
-            public SimulatedFuelTank(ResourceModule resourceModule)
-            {
-                this.fuelMass = resourceModule.ResourceAmount;
-            }
-
             public SimulatedFuelTank(double resourceAmount)
             {
                 this.fuelMass = resourceAmount;
@@ -86,17 +81,18 @@ namespace DeltaV_Calculator
         private class SimulatedEngine
         {
             // Initial data
-            public double thrust;
+            public double maxThrust;
             public double Isp;
             public double consumption;
             public Vector2 direction;
 
             // variables for the simulation
             public double totalAssociatedFuelMass;
+            public double throttle;
             public List<SimulatedFuelTank> associatedFuelTanks = new List<SimulatedFuelTank>();
 
             // Constructor
-            public SimulatedEngine(EngineModule engineModule) 
+            public SimulatedEngine(EngineModule engineModule)
             {
                 direction = (Vector2)engineModule.transform.TransformVector(engineModule.thrustNormal.Value);
 
@@ -104,10 +100,28 @@ namespace DeltaV_Calculator
                 float stretchFactor = 1.0f;
                 if(Base.worldBase.AllowsCheats) stretchFactor = direction.magnitude;
 
-                this.thrust = stretchFactor * engineModule.thrust.Value;
+                maxThrust = stretchFactor * engineModule.thrust.Value;
                 this.Isp = engineModule.ISP.Value * Base.worldBase.settings.difficulty.IspMultiplier;
-                consumption = thrust / Isp;
+                throttle = engineModule.throttle_Out.Value;
+                consumption = throttle * maxThrust / Isp;
                 direction = direction.normalized;
+            }
+
+            public SimulatedEngine(BoosterModule boosterModule)
+            {
+                maxThrust = boosterModule.thrustVector.Value.magnitude;
+                direction = (Vector2)boosterModule.transform.TransformVector(boosterModule.thrustVector.Value); // equal to thrust * stretch factor in magnitude
+                
+                // For cheaters...
+                float stretchFactor = 1.0f;
+                if (Base.worldBase.AllowsCheats) stretchFactor = direction.magnitude / (float)maxThrust;
+
+                // adjusting direction to what it should be now
+                direction = direction.normalized;
+
+                Isp = stretchFactor * boosterModule.ISP.Value * Base.worldBase.settings.difficulty.IspMultiplier; // because stretching a booster increases its thrust but not its fuel consumption
+                throttle = boosterModule.enabled ? 1.0 : 0.0;
+                consumption = throttle * maxThrust / Isp;
             }
 
             public void CalculateData()
@@ -118,13 +132,70 @@ namespace DeltaV_Calculator
                 {
                     totalAssociatedFuelMass += simulatedFuelTank.fuelMass;
                 }
+
+                // Recalculate consumption since we can make evolve throttle for the need of the simulation
+                consumption = throttle * maxThrust / Isp;
+            }
+        }
+
+
+        // Method CalculateInitialData
+        // ---------------------------
+        // This methods recalculates all the needed variables for the engine/fuel tank lists
+        private static void CalculateInitialData(List<SimulatedFuelTank> listSimulatedFuelTanks, List<SimulatedEngine> listSimulatedEngines, ref bool onMaxThrottle, out double burnTime)
+        {
+            burnTime = double.PositiveInfinity;
+
+            // First, update throttle if needed
+            // --------------------------------
+            if (!onMaxThrottle)
+            {
+                double minThrottle = 1.0;
+                double maxThrottle = 0.0;
+
+                foreach (SimulatedEngine simulatedEngine in listSimulatedEngines)
+                {
+                    if (simulatedEngine.throttle < minThrottle) minThrottle = simulatedEngine.throttle;
+                    if (simulatedEngine.throttle > maxThrottle) maxThrottle = simulatedEngine.throttle;
+                }
+
+                if (Math.Abs(maxThrottle - minThrottle) < 0.0001) // tolerance of 0.01% in case of numerical precision error
+                {
+                    // In case all throttles are equal (especially if they are all 0...), make them equal to 1
+                    // Note: All throttles are not necessarily equal, in particular if boosters are implied: those ones always run at 100% independantly from other engines
+                    foreach (SimulatedEngine simulatedEngine in listSimulatedEngines)
+                    {
+                        simulatedEngine.throttle = 1.0;
+                    }
+
+                    onMaxThrottle = true;
+                }
+            }
+
+            // Calculate the simulated variables
+            // ---------------------------------
+            foreach (SimulatedEngine simulatedEngine in listSimulatedEngines) // engines - it's important to do that one before tanks
+            {
+                simulatedEngine.CalculateData();
+            }
+
+            for (int i = 0; i < listSimulatedFuelTanks.Count; i++) // tanks
+            {
+                SimulatedFuelTank simulatedFuelTank = listSimulatedFuelTanks[i];
+                simulatedFuelTank.CalculateData();
+
+                // To memorize the first one that will run out of fuel
+                if (simulatedFuelTank.burnTime < burnTime)
+                {
+                    burnTime = simulatedFuelTank.burnTime;
+                }
             }
         }
 
 
         // Method CalculateGlobalIspAndConsumption
         // ---------------------------------------
-        // Calculates the specific impulse and fuel conscumption for a whole set of different engines
+        // Calculates the specific impulse and fuel consumption for a whole set of different engines
         private static void CalculateGlobalIspAndConsumption(List<SimulatedEngine> listSimulatedEngines, out double globalIsp, out double globalConsumption)
         {
             double globalThrust = 0.0;
@@ -132,7 +203,7 @@ namespace DeltaV_Calculator
 
             foreach(SimulatedEngine simulatedEngine in listSimulatedEngines)
             {
-                globalThrust += simulatedEngine.thrust;
+                globalThrust += simulatedEngine.maxThrust * simulatedEngine.throttle;
                 globalConsumption += simulatedEngine.consumption;
             }
 
@@ -151,8 +222,9 @@ namespace DeltaV_Calculator
 
             foreach(SimulatedEngine simulatedEngine in listSimulatedEngines)
             {
-                dvVector += simulatedEngine.direction * (float)simulatedEngine.thrust; // Delta-V provided by an engine is considered proportional to its thrust
-                totalThrust += (float)simulatedEngine.thrust;
+                float engineThrust = (float)(simulatedEngine.maxThrust * simulatedEngine.throttle);
+                dvVector += simulatedEngine.direction * engineThrust; // Delta-V provided by an engine is considered proportional to its thrust
+                totalThrust += engineThrust;
             }
 
             dvVector = dvVector / totalThrust;
@@ -217,8 +289,10 @@ namespace DeltaV_Calculator
         // -------------------------------------
         // That method will browse the rocket parts, and will build some association tables between the ResourceModules (fuel source) and
         // the engines that exploit them. This will be the raw data for the algorithm.
-        private static void BuildResourceEngineAssociation(Rocket rocket, out Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_Surfaces, out Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_Global)
+        private static void BuildResourceEngineAssociation(Rocket rocket, out Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_Surfaces, out Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_Global, out List<BoosterModule> listBoosterModules)
         {
+            // ENGINES
+            // -------
             EngineModule[] modules = rocket.partHolder.GetModules<EngineModule>();
 
             dictionaryResourceEngine_Surfaces = new Dictionary<ResourceModule, List<EngineModule>>();
@@ -230,7 +304,7 @@ namespace DeltaV_Calculator
                 {
                     foreach (Flow flow in engineModule.source.sources)
                     {
-                        if (flow.sourceSearchMode == SourceMode.Surfaces) // ignore ion engine for now (flow.sourceSearchMode == SourceMode.Global)
+                        if (flow.sourceSearchMode == SourceMode.Surfaces)
                         {
                             foreach (ResourceModule resourceModule in flow.sources)
                             {
@@ -269,6 +343,24 @@ namespace DeltaV_Calculator
                     }
                 }
             }
+
+            // BOOSTERS
+            // --------
+            BoosterModule[] boosterModules = rocket.partHolder.GetModules<BoosterModule>();
+
+            listBoosterModules = new List<BoosterModule>();
+            
+            foreach (BoosterModule boosterModule in boosterModules)
+            {
+                if (boosterModule.boosterPrimed.Value || boosterModule.enabled) // Engine has to be on;
+                {
+                    // state of the booster: OFF               -> boosterPrimed = false, enabled = false
+                    //                     : ON_AND_NOT_FIRING -> boosterPrimed = true, enabled = false
+                    //                     : ON_AND_FIRING     -> boosterPrimed = false, enabled = true
+                    //                     : EXHAUSTED         -> boosterPrimed = false, enabled = false
+                    listBoosterModules.Add(boosterModule);
+                }
+            }
         }
 
 
@@ -276,7 +368,7 @@ namespace DeltaV_Calculator
         // -------------------------
         // That method will build the necessary data for the simulation. It needs in input the list of all resourceModules
         // associated with their engines
-        private static void BuildSimulatedData(Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_Surfaces, Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_Global, out List<SimulatedFuelTank> listSimulatedFuelTanks, out List<SimulatedEngine> listSimulatedEngines)
+        private static void BuildSimulatedData(Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_Surfaces, Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_Global, List<BoosterModule> listBoosterModules, out List<SimulatedFuelTank> listSimulatedFuelTanks, out List<SimulatedEngine> listSimulatedEngines)
         {
             listSimulatedFuelTanks = new List<SimulatedFuelTank>();
             listSimulatedEngines = new List<SimulatedEngine>();
@@ -314,7 +406,7 @@ namespace DeltaV_Calculator
             // -----------------------------------------------------------------------------------
             foreach (KeyValuePair<ResourceModule, List<EngineModule>> keyValuePair in dictionaryResourceEngine_Surfaces)
             {
-                SimulatedFuelTank simulatedFuelTank = new SimulatedFuelTank(keyValuePair.Key);
+                SimulatedFuelTank simulatedFuelTank = new SimulatedFuelTank(keyValuePair.Key.ResourceAmount);
 
                 // Add all engines associated to it through the ResourceModule
                 foreach (EngineModule engineModule in keyValuePair.Value)
@@ -385,9 +477,30 @@ namespace DeltaV_Calculator
                     if (simulatedFuelTank.associatedEngines.Contains(simulatedEngine))
                     {
                         simulatedEngine.associatedFuelTanks.Add(simulatedFuelTank);
-                        simulatedEngine.totalAssociatedFuelMass += simulatedFuelTank.fuelMass;
+                        //simulatedEngine.totalAssociatedFuelMass += simulatedFuelTank.fuelMass;
                     }
                 }
+            }
+
+            // Add the boosters engines / fuel tanks - each booster is made of its own engine and its own fuel tank, so those ones can be treated easily
+            // -------------------------------------
+            foreach(BoosterModule boosterModule in listBoosterModules)
+            {
+                double fuelMass = boosterModule.wetMass.Value * (1.0 - boosterModule.dryMassPercent.Value * (float)Base.worldBase.settings.difficulty.DryMassMultiplier);
+                fuelMass *= boosterModule.fuelPercent.Value;
+
+                // create engine and fuel tank
+                SimulatedEngine simulatedEngine = new SimulatedEngine(boosterModule);
+                SimulatedFuelTank simulatedFuelTank = new SimulatedFuelTank(fuelMass);
+
+                // have them reference eachother...
+                simulatedEngine.associatedFuelTanks.Add(simulatedFuelTank);
+                simulatedFuelTank.associatedEngines.Add(simulatedEngine);
+                //simulatedEngine.totalAssociatedFuelMass = fuelMass;
+
+                // Add engine/fuel tank to the list
+                listSimulatedEngines.Add(simulatedEngine);
+                listSimulatedFuelTanks.Add(simulatedFuelTank);
             }
         }
 
@@ -398,31 +511,15 @@ namespace DeltaV_Calculator
         private static double RunSimulation(double rocketMass, List<SimulatedFuelTank> listSimulatedFuelTanks, List<SimulatedEngine> listSimulatedEngines)
         {
             Vector2 totalDeltaV = new Vector2(0.0f, 0.0f);
+            bool onMaxThrottle = false;
 
             int watchdog = listSimulatedEngines.Count + 10; // We are supposed to iterate at most listSimulatedEngines.Count times
 
             while (listSimulatedEngines.Any() && (watchdog > 0))
             {
-                double burnTime = double.PositiveInfinity;
-
                 // Calculate the simulated variables
                 // ---------------------------------
-                foreach (SimulatedEngine simulatedEngine in listSimulatedEngines) // engines - it's important to do that one before tanks
-                {
-                    simulatedEngine.CalculateData();
-                }
-
-                for (int i = 0; i < listSimulatedFuelTanks.Count; i++) // tanks
-                {
-                    SimulatedFuelTank simulatedFuelTank = listSimulatedFuelTanks[i];
-                    simulatedFuelTank.CalculateData();
-
-                    // To memorize the first one that will run out of fuel
-                    if (simulatedFuelTank.burnTime < burnTime)
-                    {
-                        burnTime = simulatedFuelTank.burnTime;
-                    }
-                }
+                CalculateInitialData(listSimulatedFuelTanks, listSimulatedEngines, ref onMaxThrottle, out double burnTime);
 
                 // Simulate the burn until the most critical tank is empty
                 // -------------------------------------------------------
@@ -434,6 +531,7 @@ namespace DeltaV_Calculator
 
                 // Your turn Mister Tsiolkovsky!
                 totalDeltaV += (float)(9.8 * globalIsp * Math.Log(rocketMass / newRocketMass)) * deltaV_Vector;
+                //UnityEngine.Debug.Log("Total DV = " + totalDeltaV.magnitude);
 
                 // Update remaining masses
                 rocketMass = newRocketMass;
@@ -458,13 +556,11 @@ namespace DeltaV_Calculator
         {
             // First, build a list of all tank clusters (ResourceModule) associated to at least one turned on engine
             // ------------------------------------------------------------------------------------------------------
-            BuildResourceEngineAssociation(rocket, out Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine, out Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_global);
-
-            //UnityEngine.Debug.Log("Resource list has " + theList.Count + " elements");
+            BuildResourceEngineAssociation(rocket, out Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine, out Dictionary<ResourceModule, List<EngineModule>> dictionaryResourceEngine_global, out List<BoosterModule> listBoosterModules);
 
             // Then, Recreate a set of simulated data, so that we can modify the values and simulate the burn
             // ----------------------------------------------------------------------------------------------
-            BuildSimulatedData(dictionaryResourceEngine, dictionaryResourceEngine_global, out List<SimulatedFuelTank> listSimulatedFuelTanks, out List<SimulatedEngine> listSimulatedEngines);
+            BuildSimulatedData(dictionaryResourceEngine, dictionaryResourceEngine_global, listBoosterModules, out List <SimulatedFuelTank> listSimulatedFuelTanks, out List<SimulatedEngine> listSimulatedEngines);
 
             // Simulate the whole burn
             // -----------------------
