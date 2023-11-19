@@ -119,6 +119,7 @@ namespace DeltaV_Calculator
                 // adjusting direction to what it should be now
                 direction = direction.normalized;
 
+                maxThrust *= stretchFactor;
                 Isp = stretchFactor * boosterModule.ISP.Value * Base.worldBase.settings.difficulty.IspMultiplier; // because stretching a booster increases its thrust but not its fuel consumption
                 throttle = boosterModule.enabled ? 1.0 : 0.0;
                 consumption = throttle * maxThrust / Isp;
@@ -219,7 +220,7 @@ namespace DeltaV_Calculator
         {
             Vector2 dvVector = new Vector2(0.0f, 0.0f);
             float totalThrust = 0.0f;
-
+            
             foreach(SimulatedEngine simulatedEngine in listSimulatedEngines)
             {
                 float engineThrust = (float)(simulatedEngine.maxThrust * simulatedEngine.throttle);
