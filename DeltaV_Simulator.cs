@@ -320,6 +320,7 @@ namespace DeltaV_Calculator
                                 {
                                     // Add a new resource module into the dictionary, with the engineModule associated
                                     dictionaryResourceEngine_Surfaces.Add(resourceModule, new List<EngineModule> { engineModule });
+                                    UnityEngine.Debug.Log("Adding new resource of type Surface : " + resourceModule.resourceType.name + "; resourceAmount = " + resourceModule.ResourceAmount);
                                 }
                             }
                         }
@@ -334,7 +335,7 @@ namespace DeltaV_Calculator
                                     // Add this engine to the engine module list associated to this resource module
                                     engineModuleList.Add(engineModule);
                                 }
-                                else
+                                else if(resourceModule.resourceType.name != "Electricity_Resource") // ignore electricity
                                 {
                                     // Add a new resource module into the dictionary, with the engineModule associated
                                     dictionaryResourceEngine_Global.Add(resourceModule, new List<EngineModule> { engineModule });

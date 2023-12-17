@@ -19,7 +19,7 @@ namespace DeltaV_Calculator
         const string C_STR_MOD_NAME = "ΔV calculator";
         const string C_STR_AUTHOR = "Altaïr";
         const string C_STR_MODLOADER_VERSION = "1.5.10.2";
-        const string C_STR_MOD_VERSION = "V1.1.1";
+        const string C_STR_MOD_VERSION = "V1.1.2";
         const string C_STR_MOD_DESCRIPTION = "This mod adds your current ΔV to the flight information interface.";
 
         public override string ModNameID => C_STR_MOD_ID;
