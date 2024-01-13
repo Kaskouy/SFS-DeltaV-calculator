@@ -320,7 +320,7 @@ namespace DeltaV_Calculator
                                 {
                                     // Add a new resource module into the dictionary, with the engineModule associated
                                     dictionaryResourceEngine_Surfaces.Add(resourceModule, new List<EngineModule> { engineModule });
-                                    UnityEngine.Debug.Log("Adding new resource of type Surface : " + resourceModule.resourceType.name + "; resourceAmount = " + resourceModule.ResourceAmount);
+                                    //UnityEngine.Debug.Log("Adding new resource of type Surface : " + resourceModule.resourceType.name + "; resourceAmount = " + resourceModule.ResourceAmount);
                                 }
                             }
                         }
