@@ -4,11 +4,8 @@ using SFS.World;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using static SFS.Parts.Modules.FlowModule;
 using SFS;
-using System.Net.Sockets;
 using UnityEngine;
 
 namespace DeltaV_Calculator
@@ -301,7 +298,7 @@ namespace DeltaV_Calculator
 
             foreach (EngineModule engineModule in modules)
             {
-                if (engineModule.engineOn.Value) // Engine has to be on
+                if (engineModule.engineOn.Value && (engineModule.thrust.Value > 0.0)) // Engine has to be on and actually provide some thrust
                 {
                     foreach (Flow flow in engineModule.source.sources)
                     {
@@ -309,18 +306,21 @@ namespace DeltaV_Calculator
                         {
                             foreach (ResourceModule resourceModule in flow.sources)
                             {
-                                bool exists = dictionaryResourceEngine_Surfaces.TryGetValue(resourceModule, out List<EngineModule> engineModuleList);
+                                if (resourceModule.resourceType.resourceMass > 0.0) // ignore resources that have no mass (like electricity)
+                                {
+                                    bool exists = dictionaryResourceEngine_Surfaces.TryGetValue(resourceModule, out List<EngineModule> engineModuleList);
 
-                                if (exists)
-                                {
-                                    // Add this engine to the engine module list associated to this resource module
-                                    engineModuleList.Add(engineModule);
-                                }
-                                else
-                                {
-                                    // Add a new resource module into the dictionary, with the engineModule associated
-                                    dictionaryResourceEngine_Surfaces.Add(resourceModule, new List<EngineModule> { engineModule });
-                                    //UnityEngine.Debug.Log("Adding new resource of type Surface : " + resourceModule.resourceType.name + "; resourceAmount = " + resourceModule.ResourceAmount);
+                                    if (exists)
+                                    {
+                                        // Add this engine to the engine module list associated to this resource module
+                                        engineModuleList.Add(engineModule);
+                                    }
+                                    else
+                                    {
+                                        // Add a new resource module into the dictionary, with the engineModule associated
+                                        dictionaryResourceEngine_Surfaces.Add(resourceModule, new List<EngineModule> { engineModule });
+                                        //UnityEngine.Debug.Log("Adding new resource of type Surface : " + resourceModule.resourceType.name + "; resourceAmount = " + resourceModule.ResourceAmount);
+                                    }
                                 }
                             }
                         }
@@ -328,17 +328,20 @@ namespace DeltaV_Calculator
                         {
                             foreach (ResourceModule resourceModule in flow.sources)
                             {
-                                bool exists = dictionaryResourceEngine_Global.TryGetValue(resourceModule, out List<EngineModule> engineModuleList);
+                                if(resourceModule.resourceType.resourceMass > 0.0) // ignore resources that have no mass(like electricity)
+                                {
+                                    bool exists = dictionaryResourceEngine_Global.TryGetValue(resourceModule, out List<EngineModule> engineModuleList);
 
-                                if (exists)
-                                {
-                                    // Add this engine to the engine module list associated to this resource module
-                                    engineModuleList.Add(engineModule);
-                                }
-                                else if(resourceModule.resourceType.name != "Electricity_Resource") // ignore electricity
-                                {
-                                    // Add a new resource module into the dictionary, with the engineModule associated
-                                    dictionaryResourceEngine_Global.Add(resourceModule, new List<EngineModule> { engineModule });
+                                    if (exists)
+                                    {
+                                        // Add this engine to the engine module list associated to this resource module
+                                        engineModuleList.Add(engineModule);
+                                    }
+                                    else
+                                    {
+                                        // Add a new resource module into the dictionary, with the engineModule associated
+                                        dictionaryResourceEngine_Global.Add(resourceModule, new List<EngineModule> { engineModule });
+                                    }
                                 }
                             }
                         }
